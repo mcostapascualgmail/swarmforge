@@ -7,7 +7,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $SessionPrefix = 'swarmforge'
-$AgentWindow = 'swarm'
 
 $Red = "`e[0;31m"
 $Green = "`e[0;32m"
@@ -25,7 +24,6 @@ $ConfigFile = Join-Path $SwarmForgeDir 'swarmforge.conf'
 $RolesDir = $SwarmForgeDir
 $ConstitutionFile = Join-Path $SwarmForgeDir 'constitution.prompt'
 $StateDir = Join-Path $WorkingDir '.swarmforge'
-$WindowIdsFile = Join-Path $StateDir 'window-ids'
 $SessionsFile = Join-Path $StateDir 'sessions.tsv'
 $PromptsDir = Join-Path $StateDir 'prompts'
 $LaunchScriptsDir = Join-Path $StateDir 'launchers'
@@ -38,6 +36,20 @@ $script:BashExecutable = 'bash'
 $script:UseWslTmux = $false
 $script:TmuxExecutable = $null
 $script:TextInfo = [System.Globalization.CultureInfo]::CurrentCulture.TextInfo
+
+$SwarmWindowName = 'swarm'
+
+$workingDirName = Split-Path -Leaf $WorkingDir
+if ([string]::IsNullOrWhiteSpace($workingDirName)) {
+    $workingDirName = 'swarm'
+}
+
+$sanitizedWorkingDirName = ($workingDirName -replace '[^A-Za-z0-9_-]', '-').Trim('-')
+if ([string]::IsNullOrWhiteSpace($sanitizedWorkingDirName)) {
+    $sanitizedWorkingDirName = 'swarm'
+}
+
+$script:SwarmSessionName = "$SessionPrefix-$sanitizedWorkingDirName"
 
 function Has-Command {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -148,12 +160,7 @@ function Wrap-InLaunchShell {
 }
 
 function Get-CleanupCommand {
-    param([Parameter(Mandatory = $true)][string]$WindowIdsFilePath)
-
-    $sessionArgs = @((ConvertTo-PowerShellSingleQuotedLiteral $WindowIdsFilePath))
-    foreach ($sessionName in ($script:Entries | ForEach-Object { $_.Session })) {
-        $sessionArgs += (ConvertTo-PowerShellSingleQuotedLiteral $sessionName)
-    }
+    $sessionName = ConvertTo-PowerShellSingleQuotedLiteral $script:SwarmSessionName
 
     $cleanupPs1 = Join-Path $ScriptDir 'swarm-cleanup.ps1'
     if (Test-Path -LiteralPath $cleanupPs1) {
@@ -165,7 +172,7 @@ function Get-CleanupCommand {
         return "Start-Process -WindowStyle Hidden -FilePath {0} -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', {1}, {2}) | Out-Null" -f `
             (ConvertTo-PowerShellSingleQuotedLiteral $powerShellExe),
             (ConvertTo-PowerShellSingleQuotedLiteral $cleanupPs1),
-            ($sessionArgs -join ', ')
+            $sessionName
     }
 
     $cleanupSh = Join-Path $ScriptDir 'swarm-cleanup.sh'
@@ -180,7 +187,10 @@ function Get-CleanupCommand {
 
     return "Start-Process -WindowStyle Hidden -FilePath {0} -ArgumentList @({1}) | Out-Null" -f `
         (ConvertTo-PowerShellSingleQuotedLiteral $bashExecutable),
-        ((@((ConvertTo-PowerShellSingleQuotedLiteral $cleanupSh)) + $sessionArgs) -join ', ')
+        ((@(
+                    (ConvertTo-PowerShellSingleQuotedLiteral $cleanupSh),
+                    $sessionName
+                )) -join ', ')
 }
 
 function Ensure-InitialGitignore {
@@ -228,11 +238,6 @@ function Display-NameForRole {
     }
 
     return ($labelParts -join ' ')
-}
-
-function Session-NameForRole {
-    param([Parameter(Mandatory = $true)][string]$Role)
-    return "$SessionPrefix-$Role"
 }
 
 function Worktree-PathForName {
@@ -298,7 +303,9 @@ function Parse-Config {
 
         $index = $script:Entries.Count + 1
         $displayName = Display-NameForRole $role
-        $session = Session-NameForRole $role
+        $session = $script:SwarmSessionName
+        $windowName = $SwarmWindowName
+        $paneIndex = $index - 1
         $worktreePath = if ($worktree -in @('none', 'master')) { $WorkingDir } else { Worktree-PathForName $worktree }
 
         $script:RoleIndex[$role] = $index
@@ -311,6 +318,8 @@ function Parse-Config {
                 Role        = $role
                 Agent       = $agent
                 Session     = $session
+                Window      = $windowName
+                Pane        = $paneIndex
                 DisplayName = $displayName
                 Worktree    = $worktree
                 WorktreePath = $worktreePath
@@ -324,7 +333,7 @@ function Parse-Config {
 
 function Write-SessionsFile {
     $lines = foreach ($entry in $script:Entries) {
-        '{0}`t{1}`t{2}`t{3}`t{4}' -f $entry.Index, $entry.Role, $entry.Session, $entry.DisplayName, $entry.Agent
+        '{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}' -f $entry.Index, $entry.Role, $entry.Session, $entry.Window, $entry.Pane, $entry.DisplayName, $entry.Agent
     }
 
     Set-Content -LiteralPath $SessionsFile -Value $lines -Encoding utf8
@@ -397,29 +406,7 @@ function Invoke-Tmux {
     }
 }
 
-function Get-PreferredPowerShellExecutable {
-    foreach ($candidate in @('pwsh', 'powershell')) {
-        $command = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($null -ne $command) {
-            return $command.Source
-        }
-    }
-
-    return $null
-}
-
-function Get-PreferredPowerShellExecutable {
-    foreach ($candidate in @('pwsh', 'powershell')) {
-        $command = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($null -ne $command) {
-            return $command.Source
-        }
-    }
-
-    return $null
-}
-
-function Resolve-Session {
+function Resolve-Target {
     param([Parameter(Mandatory = $true)][string]$LookupTarget)
 
     $normalizedTarget = $LookupTarget.ToLowerInvariant()
@@ -437,9 +424,17 @@ function Resolve-Session {
         $index = $fields[0]
         $role = $fields[1]
         $session = $fields[2]
+        $window = if ($fields.Count -ge 7) { $fields[3] } else { '0' }
+        $pane = if ($fields.Count -ge 7) { $fields[4] } else { '0' }
+        $label = if ($fields.Count -ge 7) { "$session`:$window.$pane" } else { $session }
 
         if ($normalizedTarget -eq $index.ToLowerInvariant() -or $normalizedTarget -eq $role.ToLowerInvariant()) {
-            return $session
+            return [pscustomobject]@{
+                Session = $session
+                Window = $window
+                Pane = $pane
+                Label = $label
+            }
         }
     }
 
@@ -453,8 +448,8 @@ if (-not (Test-Path -LiteralPath $SessionsFile)) {
     exit 1
 }
 
-$TargetSession = Resolve-Session -LookupTarget $Target
-if ([string]::IsNullOrWhiteSpace($TargetSession)) {
+$TargetTarget = Resolve-Target -LookupTarget $Target
+if ($null -eq $TargetTarget) {
     Write-Error "Unknown target: $Target"
     exit 1
 }
@@ -463,13 +458,13 @@ $Message = $MessageParts -join ' '
 $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogFile) | Out-Null
-Add-Content -LiteralPath $LogFile -Value "[$Timestamp] [$TargetSession] $Message"
+Add-Content -LiteralPath $LogFile -Value "[$Timestamp] [$($TargetTarget.Label)] $Message"
 
-Invoke-Tmux send-keys -t "$TargetSession`:0.0" -l -- $Message
+Invoke-Tmux send-keys -t "$($TargetTarget.Session)`:$($TargetTarget.Window).$($TargetTarget.Pane)" -l -- $Message
 Start-Sleep -Milliseconds 150
-Invoke-Tmux send-keys -t "$TargetSession`:0.0" C-m
+Invoke-Tmux send-keys -t "$($TargetTarget.Session)`:$($TargetTarget.Window).$($TargetTarget.Pane)" C-m
 Start-Sleep -Milliseconds 50
-Invoke-Tmux send-keys -t "$TargetSession`:0.0" C-j
+Invoke-Tmux send-keys -t "$($TargetTarget.Session)`:$($TargetTarget.Window).$($TargetTarget.Pane)" C-j
 '@
 
     $notifyScriptPath = Join-Path $SwarmToolsDir 'notify-agent.ps1'
@@ -493,7 +488,6 @@ function Prepare-Workspace {
     Check-HelperScripts
     Write-SessionsFile
     Write-NotifyScript
-    Set-Content -LiteralPath $WindowIdsFile -Value @() -Encoding utf8
 }
 
 function Prepare-Worktrees {
@@ -524,18 +518,35 @@ function Check-BackendDependencies {
     }
 }
 
-function Create-RoleSession {
+function Create-RolePane {
     param(
         [Parameter(Mandatory = $true)][string]$Session,
-        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$Window,
+        [Parameter(Mandatory = $true)][bool]$IsFirstWindow,
         [string[]]$InitialCommand = @()
     )
 
-    if ($InitialCommand.Count -gt 0) {
-        Invoke-Tmux new-session -d -s $Session -n $Title -- @InitialCommand *> $null
-    } else {
-        Invoke-Tmux new-session -d -s $Session -n $Title *> $null
+    if ($IsFirstWindow) {
+        if ($InitialCommand.Count -gt 0) {
+            Invoke-Tmux new-session -d -s $Session -n $Window -- @InitialCommand *> $null
+        } else {
+            Invoke-Tmux new-session -d -s $Session -n $Window *> $null
+        }
+
+        # Keep exited agent panes visible so startup failures are observable.
+        Invoke-Tmux set-option -t $Session remain-on-exit on *> $null
+        Invoke-Tmux set-option -t $Session automatic-rename off *> $null
+        Invoke-Tmux set-window-option -t "$Session`:$Window" pane-border-status top *> $null
+        return
     }
+
+    if ($InitialCommand.Count -gt 0) {
+        Invoke-Tmux split-window -d -t "$Session`:$Window" -- @InitialCommand *> $null
+    } else {
+        Invoke-Tmux split-window -d -t "$Session`:$Window" *> $null
+    }
+
+    Invoke-Tmux select-layout -t "$Session`:$Window" tiled *> $null
 }
 
 function Write-AgentInstructionFile {
@@ -588,7 +599,7 @@ function Write-RoleLaunchScript {
     if ($OwnsCleanup) {
         $cleanupBlock = @"
 `$exitCode = if (`$null -ne `$LASTEXITCODE) { [int]`$LASTEXITCODE } else { 0 }
-$(Get-CleanupCommand -WindowIdsFilePath $WindowIdsFile)
+$(Get-CleanupCommand)
 exit `$exitCode
 "@
     }
@@ -606,12 +617,17 @@ $cleanupBlock
 }
 
 function Launch-Role {
-    param([Parameter(Mandatory = $true)][int]$Index)
+    param(
+        [Parameter(Mandatory = $true)][int]$Index,
+        [Parameter(Mandatory = $true)][bool]$IsFirstWindow
+    )
 
     $entry = $script:Entries[$Index - 1]
     $role = $entry.Role
     $agent = $entry.Agent
     $session = $entry.Session
+    $windowName = $entry.Window
+    $paneIndex = $entry.Pane
     $display = $entry.DisplayName
     $roleWorktree = $entry.WorktreePath
     $promptFile = Join-Path $PromptsDir "$role.md"
@@ -631,8 +647,8 @@ function Launch-Role {
             $initialCommand = @($powerShellExe, '-NoLogo', '-NoProfile', '-Command', $sessionCommand)
         }
 
-        Create-RoleSession -Session $session -Title $display -InitialCommand $initialCommand
-        Write-Host "  ${Cyan}[$display]${Reset} opened without agent backend"
+        Create-RolePane -Session $session -Window $windowName -IsFirstWindow $IsFirstWindow -InitialCommand $initialCommand
+        Write-Host "  ${Cyan}[$display]${Reset} opened without agent backend in $session`:$windowName.$paneIndex"
         return
     }
 
@@ -640,31 +656,8 @@ function Launch-Role {
 
     $launchScriptPath = Write-RoleLaunchScript -Role $role -RoleWorktree $roleWorktree -PromptFile $promptFile -Agent $agent -Display $display -OwnsCleanup ($Index -eq $script:CleanupOwnerIndex)
     $initialCommand = @($powerShellExe, '-NoLogo', '-NoProfile', '-File', $launchScriptPath)
-    Create-RoleSession -Session $session -Title $display -InitialCommand $initialCommand
-    Write-Host "  ${Cyan}[$display]${Reset} started in session $session"
-}
-
-function Open-TerminalWindow {
-    param(
-        [Parameter(Mandatory = $true)][string]$Session,
-        [Parameter(Mandatory = $true)][string]$Title
-    )
-
-    $powerShellExe = Get-PreferredPowerShellExecutable
-    if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
-        return $false
-    }
-
-    if ($script:UseWslTmux) {
-        $attachCommand = "wsl tmux attach-session -t '$Session'"
-    } else {
-        $quotedTmuxExe = $script:TmuxExecutable -replace "'", "''"
-        $attachCommand = "& '$quotedTmuxExe' attach-session -t '$Session'"
-    }
-
-    $process = Start-Process -FilePath $powerShellExe -WorkingDirectory $WorkingDir -ArgumentList @('-NoLogo', '-NoExit', '-EncodedCommand', (ConvertTo-EncodedPowerShellCommand $attachCommand)) -WindowStyle Normal -PassThru
-    Add-Content -LiteralPath $WindowIdsFile -Value $process.Id
-    return $true
+    Create-RolePane -Session $session -Window $windowName -IsFirstWindow $IsFirstWindow -InitialCommand $initialCommand
+    Write-Host "  ${Cyan}[$display]${Reset} started in $session`:$windowName.$paneIndex"
 }
 
 function Choose-CleanupOwner {
@@ -700,21 +693,18 @@ Prepare-Workspace
 Prepare-Worktrees
 Choose-CleanupOwner
 
-foreach ($entry in $script:Entries) {
-    $localSession = $entry.Session
+$hasSession = $false
+
+try {
+    Invoke-Tmux has-session -t $script:SwarmSessionName *> $null
+    $hasSession = ($LASTEXITCODE -eq 0)
+} catch {
     $hasSession = $false
+}
 
-    try {
-        Invoke-Tmux has-session -t $localSession *> $null
-        $hasSession = ($LASTEXITCODE -eq 0)
-    } catch {
-        $hasSession = $false
-    }
-
-    if ($hasSession) {
-        Write-Host "${Yellow}Existing SwarmForge session found: $localSession. Killing it...${Reset}"
-        Invoke-Tmux kill-session -t $localSession *> $null
-    }
+if ($hasSession) {
+    Write-Host "${Yellow}Existing SwarmForge session found: $($script:SwarmSessionName). Killing it...${Reset}"
+    Invoke-Tmux kill-session -t $script:SwarmSessionName *> $null
 }
 
 Write-Host ($Cyan + $Bold)
@@ -724,35 +714,35 @@ Write-Host '  |   Disciplined agents build better software    |'
 Write-Host '  +-----------------------------------------------+'
 Write-Host $Reset
 
-Write-Host ($Green + 'Starting SwarmForge sessions...' + $Reset)
+Write-Host ($Green + 'Starting SwarmForge session...' + $Reset)
 foreach ($entry in $script:Entries) {
-    Launch-Role -Index $entry.Index
+    Launch-Role -Index $entry.Index -IsFirstWindow ($entry.Index -eq 1)
     Start-Sleep -Milliseconds 750
 }
+
+foreach ($entry in $script:Entries) {
+    Invoke-Tmux select-pane -t "$($entry.Session):$($entry.Window).$($entry.Pane)" -T $entry.DisplayName *> $null
+}
+
+Invoke-Tmux select-window -t "$($script:SwarmSessionName):$($script:Entries[0].Window)" *> $null
+Invoke-Tmux select-pane -t "$($script:Entries[0].Session):$($script:Entries[0].Window).$($script:Entries[0].Pane)" *> $null
 
 Write-Host ''
 Write-Host ($Green + $Bold + 'SwarmForge is ready.' + $Reset)
 Write-Host ('Working directory: ' + $WorkingDir)
-Write-Host 'Sessions:'
+Write-Host ('Session: ' + $script:SwarmSessionName)
+Write-Host ('Window: ' + $SwarmWindowName)
+Write-Host 'Panes:'
 foreach ($entry in $script:Entries) {
-    Write-Host ('  ' + $entry.DisplayName + ': ' + $entry.Session)
+    Write-Host ('  ' + $entry.DisplayName + ': ' + $entry.Session + ':' + $entry.Window + '.' + $entry.Pane)
 }
 Write-Host ''
 
 $attachHint = if ($script:UseWslTmux) { 'wsl tmux attach-session -t <session-name>' } else { 'tmux attach-session -t <session-name>' }
 
 Write-Host ($Green + 'Tip: Use ' + $WorkingDir + '\swarmtools\notify-agent.ps1 role-or-index message while the swarm is running.' + $Reset)
-Write-Host ($Green + 'Tip: Reattach manually with ' + $attachHint + ' if needed.' + $Reset)
+Write-Host ($Green + 'Tip: Navigate tmux panes with Ctrl-b then an arrow key.' + $Reset)
+Write-Host ($Green + 'Tip: Reattach manually with ' + ($attachHint -replace '<session-name>', $script:SwarmSessionName) + ' if needed.' + $Reset)
 Write-Host ''
 
-$openedWindows = $false
-Set-Content -LiteralPath $WindowIdsFile -Value @() -Encoding utf8
-foreach ($entry in $script:Entries) {
-    if (Open-TerminalWindow -Session $entry.Session -Title $entry.DisplayName) {
-        $openedWindows = $true
-    }
-}
-
-if (-not $openedWindows) {
-    Invoke-Tmux attach-session -t $script:Entries[$script:CleanupOwnerIndex - 1].Session
-}
+Invoke-Tmux attach-session -t $script:SwarmSessionName

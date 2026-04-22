@@ -2,7 +2,7 @@ Feature: SwarmForge PowerShell workspace setup
 
   The PowerShell launcher prepares a project-local workspace, initializes git
   when needed, writes helper state, creates worktrees, and starts one
-  tmux session per configured role.
+  tmux session containing one visible pane per configured role.
 
   Scenario: Startup initializes a git repository when the working directory is not a repo
     Given a working directory without a ".git" directory
@@ -60,26 +60,17 @@ Feature: SwarmForge PowerShell workspace setup
 
   Scenario: Existing swarm sessions are killed before startup continues
     Given a valid swarm configuration
-    And tmux already has a session for one configured role
-    When "swarmforge.ps1" starts tmux sessions
+    And tmux already has a session for the swarm
+    When "swarmforge.ps1" starts the tmux session
     Then the existing session is killed before a replacement session is created
 
-  Scenario: Startup creates one tmux session per configured role
+  Scenario: Startup creates one tmux session with one pane per configured role
     Given a valid swarm configuration
     When "swarmforge.ps1" launches the swarm
-    Then a tmux session named "swarmforge-architect" is created
-    And a tmux session named "swarmforge-coder" is created
-    And a tmux session named "swarmforge-reviewer" is created
-    And a tmux session named "swarmforge-logger" is created
-    And each session uses the window name "swarm"
+    Then one tmux session named "swarmforge-<working-directory-name>" is created
+    And the session has one shared window with panes for "architect", "coder", "reviewer", and "logger"
 
-  Scenario: Startup opens one PowerShell window per session when window launching succeeds
-    Given a valid swarm configuration
-    When "swarmforge.ps1" finishes launching the swarm
-    Then one PowerShell window is opened for each session
-    And the window ids are written to ".swarmforge/window-ids"
-
-  Scenario: Startup attaches to the cleanup-owner session when no windows are opened
+  Scenario: Startup attaches the current shell to the shared swarm session
     Given a valid swarm configuration
     When "swarmforge.ps1" finishes launching the swarm
     Then the current shell attaches to one running tmux session

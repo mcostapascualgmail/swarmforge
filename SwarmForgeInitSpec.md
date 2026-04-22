@@ -36,7 +36,7 @@ SwarmForge turns raw AI coding speed into **reliable, scalable, maintainable eng
 | Feature | Description | MVP Status |
 |---------|-------------|------------|
 | **Constitution Engine** | Central `Constitution.md` file that every agent reads at startup. Defines 5 non-negotiable rules. | Yes |
-| **Agent Swarm Orchestration** | Spawns and coordinates multiple specialized agents (Architect, Coder, TDD Guardian, E2E Interpreter, Mutation Hunter, Complexity Enforcer, Linter Guardian) in named tmux panes. | Yes |
+| **Agent Swarm Orchestration** | Spawns and coordinates multiple specialized agents (Architect, Coder, TDD Guardian, E2E Interpreter, Mutation Hunter, Complexity Enforcer, Linter Guardian) in named tmux panes within a shared session. | Yes |
 | **Real-Time Collaboration** | Agents communicate via shared filesystem, tmux pane output, and structured log files. Human can observe and intervene in any pane. | Yes |
 | **TDD Enforcement (Rule 1)** | Agents must follow Red → Green → Refactor cycle. Production code forbidden until failing test exists. | Yes |
 | **E2E Gherkin Interpreter (Rule 2)** | Auto-parses `.feature` files into executable end-to-end tests. Gherkin is the single source of truth. | Yes |
@@ -51,7 +51,7 @@ SwarmForge turns raw AI coding speed into **reliable, scalable, maintainable eng
 ## 5. How It Works (High-Level Workflow)
 
 1. **Launch**  
-   User runs `./swarmforge.ps1` → tmux session starts with pre-configured panes for each agent role.
+   User runs `./swarmforge.ps1` → one tmux session starts with a shared split-pane layout for each agent role.
 
 2. **Task Intake**  
    User describes a feature in the Architect pane or drops a new `features/*.feature` Gherkin file.

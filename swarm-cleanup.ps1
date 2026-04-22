@@ -1,10 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [string]$WindowIdsFile,
-
-    [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
-    [string[]]$Sessions = @()
+    [string]$Session
 )
 
 Set-StrictMode -Version Latest
@@ -48,32 +45,9 @@ function Invoke-Tmux {
 
 Initialize-TmuxCommand
 
-foreach ($session in $Sessions) {
-    if ([string]::IsNullOrWhiteSpace($session)) {
-        continue
-    }
-
+if (-not [string]::IsNullOrWhiteSpace($Session)) {
     try {
-        Invoke-Tmux kill-session -t $session *> $null
+        Invoke-Tmux kill-session -t $Session *> $null
     } catch {
-    }
-}
-
-Start-Sleep -Seconds 1
-
-if (Test-Path -LiteralPath $WindowIdsFile) {
-    foreach ($windowId in Get-Content -LiteralPath $WindowIdsFile) {
-        $value = $windowId.Trim()
-        if ([string]::IsNullOrWhiteSpace($value)) {
-            continue
-        }
-
-        $processId = 0
-        if ([int]::TryParse($value, [ref]$processId)) {
-            try {
-                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-            } catch {
-            }
-        }
     }
 }

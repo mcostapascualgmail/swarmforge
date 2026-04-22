@@ -50,7 +50,7 @@ function Invoke-Tmux {
     }
 }
 
-function Resolve-Session {
+function Resolve-Target {
     param([Parameter(Mandatory = $true)][string]$LookupTarget)
 
     $normalizedTarget = $LookupTarget.ToLowerInvariant()
@@ -68,9 +68,17 @@ function Resolve-Session {
         $index = $fields[0]
         $role = $fields[1]
         $session = $fields[2]
+        $window = if ($fields.Count -ge 7) { $fields[3] } else { '0' }
+        $pane = if ($fields.Count -ge 7) { $fields[4] } else { '0' }
+        $label = if ($fields.Count -ge 7) { "$session`:$window.$pane" } else { $session }
 
         if ($normalizedTarget -eq $index.ToLowerInvariant() -or $normalizedTarget -eq $role.ToLowerInvariant()) {
-            return $session
+            return [pscustomobject]@{
+                Session = $session
+                Window = $window
+                Pane = $pane
+                Label = $label
+            }
         }
     }
 
@@ -84,8 +92,8 @@ if (-not (Test-Path -LiteralPath $SessionsFile)) {
     exit 1
 }
 
-$TargetSession = Resolve-Session -LookupTarget $Target
-if ([string]::IsNullOrWhiteSpace($TargetSession)) {
+$TargetTarget = Resolve-Target -LookupTarget $Target
+if ($null -eq $TargetTarget) {
     Write-Error "Unknown target: $Target"
     exit 1
 }
@@ -94,10 +102,10 @@ $Message = $MessageParts -join ' '
 $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogFile) | Out-Null
-Add-Content -LiteralPath $LogFile -Value "[$Timestamp] [$TargetSession] $Message"
+Add-Content -LiteralPath $LogFile -Value "[$Timestamp] [$($TargetTarget.Label)] $Message"
 
-Invoke-Tmux send-keys -t "$TargetSession`:0.0" -l -- $Message
+Invoke-Tmux send-keys -t "$($TargetTarget.Session)`:$($TargetTarget.Window).$($TargetTarget.Pane)" -l -- $Message
 Start-Sleep -Milliseconds 150
-Invoke-Tmux send-keys -t "$TargetSession`:0.0" C-m
+Invoke-Tmux send-keys -t "$($TargetTarget.Session)`:$($TargetTarget.Window).$($TargetTarget.Pane)" C-m
 Start-Sleep -Milliseconds 50
-Invoke-Tmux send-keys -t "$TargetSession`:0.0" C-j
+Invoke-Tmux send-keys -t "$($TargetTarget.Session)`:$($TargetTarget.Window).$($TargetTarget.Pane)" C-j
