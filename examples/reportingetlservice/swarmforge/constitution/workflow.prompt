@@ -2,6 +2,10 @@
 
 - At startup, each agent must discover the branch or worktree assigned to its role.
 - Each agent must remember that assigned branch or worktree and work only there.
+- Treat `develop` as a protected integration branch: read from it, but do not commit on it, merge into it locally, or push to it directly.
+- When integrating for delivery, use GitLab merge requests that target `develop`; do not bypass that flow with direct pushes or direct local merges to `develop`.
+- Before starting a new feature or review cycle, coder and reviewer branches/worktrees must be cleaned and resynced from the latest `develop` so work from different features is not mixed together.
+- If a branch or worktree contains unexpected local commits, staged files, or uncommitted changes during that cleanup step, stop and report instead of carrying them into the next feature.
 - The architect defines behavior and design and notifies the coder.
 - The coder implements behavior and notifies the reviewer.
 - The reviewer runs deeper quality checks and notifies the coder and architect.
