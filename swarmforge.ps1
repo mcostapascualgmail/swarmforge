@@ -365,13 +365,51 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$RootDir = Split-Path -Parent $PSScriptRoot
-$SessionsFile = Join-Path $RootDir '.swarmforge\sessions.tsv'
-$LogFile = Join-Path $RootDir 'logs\agent_messages.log'
-
 function Has-Command {
     param([Parameter(Mandatory = $true)][string]$Name)
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Find-ProjectRoot {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($path in @(
+            (Get-Location).Path,
+            (Split-Path -Parent $PSScriptRoot),
+            $PSScriptRoot
+        )) {
+        if ([string]::IsNullOrWhiteSpace($path)) {
+            continue
+        }
+
+        try {
+            $resolved = (Resolve-Path -LiteralPath $path -ErrorAction Stop).Path
+        } catch {
+            continue
+        }
+
+        if (-not $candidates.Contains($resolved)) {
+            $null = $candidates.Add($resolved)
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        $current = $candidate
+        while (-not [string]::IsNullOrWhiteSpace($current)) {
+            if (Test-Path -LiteralPath (Join-Path $current '.swarmforge\sessions.tsv')) {
+                return $current
+            }
+
+            $parent = Split-Path -Parent $current
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) {
+                break
+            }
+
+            $current = $parent
+        }
+    }
+
+    return $null
 }
 
 $script:UseWslTmux = $false
@@ -442,6 +480,15 @@ function Resolve-Target {
 }
 
 Initialize-TmuxCommand
+
+$RootDir = Find-ProjectRoot
+if ([string]::IsNullOrWhiteSpace($RootDir)) {
+    Write-Error 'Could not find the SwarmForge project root containing .swarmforge\sessions.tsv.'
+    exit 1
+}
+
+$SessionsFile = Join-Path $RootDir '.swarmforge\sessions.tsv'
+$LogFile = Join-Path $RootDir 'logs\agent_messages.log'
 
 if (-not (Test-Path -LiteralPath $SessionsFile)) {
     Write-Error "Sessions file not found: $SessionsFile"
