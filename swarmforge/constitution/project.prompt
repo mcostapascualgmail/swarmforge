@@ -1,0 +1,7 @@
+# Project Rules
+
+- This project is SwarmForge, a tmux-based agent orchestration platform.
+- Preserve the config-driven launcher model centered on `swarmforge/swarmforge.conf`, `swarmforge/<role>.prompt`, and `swarmforge/constitution.prompt`.
+- Keep swarm state project-local under `.swarmforge/`, worktrees under `.worktrees/`, and helper scripts under `swarmtools/`.
+- Prefer simple script-based orchestration over adding heavier runtime infrastructure.
+- Maintain clear role boundaries, reliable startup behavior, and explicit agent handoff mechanisms.
