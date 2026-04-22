@@ -39,6 +39,7 @@ Feature: SwarmForge PowerShell agent launch
     When "swarmforge.ps1" launches the "architect" role
     Then tmux sends a command containing "Set-Location" to the architect pane
     And the command contains "claude"
+    And the command contains "--model us.anthropic.claude-opus-4-6-v1"
     And the command contains "--append-system-prompt-file"
     And the command contains "--permission-mode acceptEdits"
     And the command contains "$promptText"

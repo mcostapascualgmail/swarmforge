@@ -635,7 +635,7 @@ function Write-RoleLaunchScript {
     switch ($Agent) {
         'claude' {
             $agentExecutable = (Get-Command 'claude' -ErrorAction SilentlyContinue).Source
-            $agentInvocation = "& {0} --append-system-prompt-file {1} --permission-mode acceptEdits -n {2} `$promptText" -f `
+            $agentInvocation = "& {0} --model us.anthropic.claude-opus-4-6-v1 --append-system-prompt-file {1} --permission-mode acceptEdits -n {2} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
                 (ConvertTo-PowerShellSingleQuotedLiteral $PromptFile),
                 (ConvertTo-PowerShellSingleQuotedLiteral ("SwarmForge $Display"))
