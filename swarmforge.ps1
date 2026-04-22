@@ -332,8 +332,17 @@ function Parse-Config {
 }
 
 function Write-SessionsFile {
+    $tab = [char]9
     $lines = foreach ($entry in $script:Entries) {
-        '{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}' -f $entry.Index, $entry.Role, $entry.Session, $entry.Window, $entry.Pane, $entry.DisplayName, $entry.Agent
+        [string]::Join($tab, @(
+                [string]$entry.Index
+                [string]$entry.Role
+                [string]$entry.Session
+                [string]$entry.Window
+                [string]$entry.Pane
+                [string]$entry.DisplayName
+                [string]$entry.Agent
+            ))
     }
 
     Set-Content -LiteralPath $SessionsFile -Value $lines -Encoding utf8
