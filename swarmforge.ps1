@@ -215,17 +215,46 @@ function Ensure-InitialGitignore {
     }
 }
 
-function Initialize-GitRepo {
-    $gitDir = Join-Path $WorkingDir '.git'
-    if (Test-Path -LiteralPath $gitDir) {
-        return
+function Invoke-GitChecked {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    $output = (& git @Arguments 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        $details = (($output | ForEach-Object { "$_" }) -join [Environment]::NewLine).Trim()
+        if ([string]::IsNullOrWhiteSpace($details)) {
+            throw $FailureMessage
+        }
+
+        throw "$FailureMessage`n$details"
     }
 
-    & git init $WorkingDir *> $null
-    & git -C $WorkingDir branch -M master *> $null
+    return @($output)
+}
+
+function Test-GitHeadExists {
+    & git -C $WorkingDir rev-parse --verify HEAD *> $null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Ensure-InitialCommit {
     Ensure-InitialGitignore
-    & git -C $WorkingDir add . *> $null
-    & git -C $WorkingDir commit -m 'Initial swarmforge repository' *> $null
+    Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'add', '.') -FailureMessage "Failed to stage the initial repository state in $WorkingDir." | Out-Null
+    Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'commit', '--allow-empty', '-m', 'Initial swarmforge repository') -FailureMessage "Failed to create the initial commit in $WorkingDir. Configure git user.name and git user.email, then try again." | Out-Null
+}
+
+function Initialize-GitRepo {
+    $gitDir = Join-Path $WorkingDir '.git'
+    if (-not (Test-Path -LiteralPath $gitDir)) {
+        Invoke-GitChecked -Arguments @('init', $WorkingDir) -FailureMessage "Failed to initialize a git repository in $WorkingDir." | Out-Null
+        Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'branch', '-M', 'master') -FailureMessage "Failed to rename the initial branch to 'master' in $WorkingDir." | Out-Null
+    }
+
+    if (-not (Test-GitHeadExists)) {
+        Ensure-InitialCommit
+    }
 }
 
 function Display-NameForRole {
@@ -546,6 +575,8 @@ function Prepare-Workspace {
 }
 
 function Prepare-Worktrees {
+    Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'worktree', 'prune') -FailureMessage "Failed to prune stale git worktree metadata in $WorkingDir." | Out-Null
+
     foreach ($entry in $script:Entries) {
         $worktreeName = $entry.Worktree
         $worktreePath = $entry.WorktreePath
@@ -560,7 +591,15 @@ function Prepare-Worktrees {
             continue
         }
 
-        & git -C $WorkingDir worktree add --force -B $branchName $worktreePath HEAD *> $null
+        if (-not (Test-GitHeadExists)) {
+            throw "Cannot create worktree '$worktreeName' because repository HEAD does not exist yet."
+        }
+
+        Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'worktree', 'add', '--force', '-B', $branchName, $worktreePath, 'HEAD') -FailureMessage "Failed to create worktree '$worktreeName' at $worktreePath." | Out-Null
+
+        if (-not (Test-Path -LiteralPath $worktreeGit)) {
+            throw "Worktree '$worktreeName' was not created correctly at $worktreePath."
+        }
     }
 }
 
@@ -611,6 +650,7 @@ function Write-AgentInstructionFile {
     )
 
     $content = @"
+The authoritative `swarmforge/` folder is always the version-controlled folder at the project root. Resolve every `swarmforge/...` path from the current repository root, never from `.swarmforge/` and never from inside `.worktrees/`.
 Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions.
 Read swarmforge/$Role.prompt, then read every file it refers to recursively, and follow all of those instructions.
 "@

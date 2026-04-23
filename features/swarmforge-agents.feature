@@ -26,7 +26,8 @@ Feature: SwarmForge PowerShell agent launch
       """
     And "swarmforge/architect.prompt" exists
     When "swarmforge.ps1" writes the generated instruction file for "architect"
-    Then ".swarmforge/prompts/architect.md" contains "Read swarmforge/constitution.prompt"
+    Then ".swarmforge/prompts/architect.md" contains "The authoritative `swarmforge/` folder is always the version-controlled folder at the project root"
+    And ".swarmforge/prompts/architect.md" contains "Read swarmforge/constitution.prompt"
     And ".swarmforge/prompts/architect.md" contains "read every file it refers to recursively"
     And ".swarmforge/prompts/architect.md" contains "Read swarmforge/architect.prompt"
 
