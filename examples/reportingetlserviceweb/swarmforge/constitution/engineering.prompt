@@ -1,0 +1,9 @@
+# Engineering Rules
+
+- Prefer simple PowerShell-based orchestration in `swarmforge.ps1` unless a compiled CLI replacement is explicitly part of the work.
+- Keep tmux session management, Terminal integration, git worktree setup, and helper-script generation reliable and observable.
+- Preserve config-driven behavior: role topology, backend choice, and worktree assignment must come from `swarmforge/swarmforge.conf`.
+- Keep prompt generation explicit and deterministic so each role receives the correct startup instructions.
+- Verify behavior with executable tests around startup flow, prompt generation, backend launch commands, and tmux orchestration.
+- When changing startup or orchestration behavior, update the corresponding feature files and CLI/integration coverage together.
+- Before relying on external tools or backends such as `tmux`, `claude`, `codex`, `git`, or `watch`, verify their invocation contract from primary documentation or local help output.

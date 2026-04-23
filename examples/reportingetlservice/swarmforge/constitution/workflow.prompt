@@ -1,5 +1,6 @@
 # Workflow Rules
 
+- Use Git for source control, with GitLab as the canonical remote, code review system, and merge request host.
 - At startup, each agent must discover the branch or worktree assigned to its role.
 - Each agent must remember that assigned branch or worktree and work only there.
 - Treat `develop` as a protected integration branch: read from it, but do not commit on it, merge into it locally, or push to it directly.
