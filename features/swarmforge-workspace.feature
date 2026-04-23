@@ -16,7 +16,6 @@ Feature: SwarmForge PowerShell workspace setup
     When "swarmforge.ps1" initializes the repository
     Then ".gitignore" contains ".swarmforge/"
     And ".gitignore" contains ".worktrees/"
-    And ".gitignore" contains "swarmtools/"
     And ".gitignore" contains "logs/"
     And ".gitignore" contains "agent_context/"
 
@@ -28,14 +27,14 @@ Feature: SwarmForge PowerShell workspace setup
     And the directory "agent_context" exists under the project root
     And the directory ".swarmforge" exists under the project root
     And the directory ".swarmforge/prompts" exists under the project root
-    And the directory "swarmtools" exists under the project root
     And the directory ".worktrees" exists under the project root
+    And the directory ".worktrees/swarmtools" exists under the project root
 
   Scenario: Startup writes sessions metadata and a notify helper
     Given a valid swarm configuration
     When "swarmforge.ps1" prepares the workspace
     Then the file ".swarmforge/sessions.tsv" exists
-    And the file "swarmtools/notify-agent.ps1" exists
+    And the file ".worktrees/swarmtools/notify-agent.ps1" exists
 
   Scenario: Startup creates one git worktree per non-master role
     Given "swarmforge/swarmforge.conf" contains:

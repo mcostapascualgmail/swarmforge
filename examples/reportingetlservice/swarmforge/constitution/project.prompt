@@ -2,6 +2,6 @@
 
 - This project is ReportingETLService is a .NET 10.0 ASP.NET Core Web API for importing and mantaining Sales and invetory data for LiveNation.
 - Preserve the config-driven launcher model centered on `swarmforge/swarmforge.conf`, `swarmforge/<role>.prompt`, and `swarmforge/constitution.prompt`.
-- Keep swarm state project-local under `.swarmforge/`, worktrees under `.worktrees/`, and helper scripts under `swarmtools/`.
+- Keep swarm state project-local under `.swarmforge/`, worktrees under `.worktrees/`, and helper scripts under `.worktrees/swarmtools/`.
 - Prefer simple shell-based orchestration over adding heavier runtime infrastructure.
 - Maintain clear role boundaries, reliable startup behavior, and explicit agent handoff mechanisms.

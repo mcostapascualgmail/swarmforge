@@ -12,6 +12,6 @@
 - The expected git layout must exist before work begins.
 - Agents must not silently work in the wrong branch or another role's worktree.
 - Merge accepted changes only from the correct source branch for the role that produced them.
-- Agents must use `notify-agent.ps1` for handoffs.
+- Agents must use `.worktrees/swarmtools/notify-agent.ps1` for handoffs.
 - Every handoff must include the commit hash, branch name, what changed, and what was verified.
 - Do not commit unrelated local changes or generated artifacts unless they are required for the task.

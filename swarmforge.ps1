@@ -18,8 +18,8 @@ $Reset = "`e[0m"
 $WorkingDir = (Resolve-Path -LiteralPath $WorkingDir).Path
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $SwarmForgeDir = Join-Path $WorkingDir 'swarmforge'
-$SwarmToolsDir = Join-Path $WorkingDir 'swarmtools'
 $WorktreesDir = Join-Path $WorkingDir '.worktrees'
+$SwarmToolsDir = Join-Path $WorktreesDir 'swarmtools'
 $ConfigFile = Join-Path $SwarmForgeDir 'swarmforge.conf'
 $RolesDir = $SwarmForgeDir
 $ConstitutionFile = Join-Path $SwarmForgeDir 'constitution.prompt'
@@ -198,7 +198,6 @@ function Ensure-InitialGitignore {
     $requiredEntries = @(
         '.swarmforge/'
         '.worktrees/'
-        'swarmtools/'
         'logs/'
         'agent_context/'
     )
@@ -796,7 +795,7 @@ Write-Host ''
 
 $attachHint = if ($script:UseWslTmux) { 'wsl tmux attach-session -t <session-name>' } else { 'tmux attach-session -t <session-name>' }
 
-Write-Host ($Green + 'Tip: Use ' + $WorkingDir + '\swarmtools\notify-agent.ps1 role-or-index message while the swarm is running.' + $Reset)
+Write-Host ($Green + 'Tip: Use ' + $WorkingDir + '\.worktrees\swarmtools\notify-agent.ps1 role-or-index message while the swarm is running.' + $Reset)
 Write-Host ($Green + 'Tip: Navigate tmux panes with Ctrl-b then an arrow key.' + $Reset)
 Write-Host ($Green + 'Tip: Reattach manually with ' + ($attachHint -replace '<session-name>', $script:SwarmSessionName) + ' if needed.' + $Reset)
 Write-Host ''

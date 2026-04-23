@@ -16,7 +16,7 @@ SwarmForge is a lightweight, tmux-based orchestration layer that:
 - Creates one tmux session for the swarm with one split pane per configured role
 - Reads behavior from project-local `swarmforge/<role>.prompt` files plus a layered `swarmforge/constitution.prompt`
 - Supports per-role backends such as `claude`, `codex`, or `none`
-- Creates a project-local `swarmtools/` directory with notification helpers for the active swarm
+- Creates a project-local `.worktrees/swarmtools/` directory with notification helpers for the active swarm
 - Creates one git worktree per configured role under `.worktrees/`
 - Initializes a git repository in a new working directory and creates a first commit with `logs/` and `agent_context/` ignored
 - Keeps all swarm state local to the working directory in `.swarmforge/`
@@ -64,11 +64,11 @@ The default three-agent workflow is:
 3. In `swarmforge/swarmforge.conf`, define each window as `window <role> <agent> <worktree>`.
 4. Add `swarmforge.ps1` to your shell `PATH` before startup.
 5. Run `swarmforge.ps1 <working-directory>` or run it from inside that directory.
-6. If the working directory is not already a git repo, startup runs `git init`, renames the initial branch to `master`, writes `.gitignore` entries for `.swarmforge/`, `.worktrees/`, `swarmtools/`, `logs/`, and `agent_context/`, and makes the first commit from the current project state.
+6. If the working directory is not already a git repo, startup runs `git init`, renames the initial branch to `master`, writes `.gitignore` entries for `.swarmforge/`, `.worktrees/`, `logs/`, and `agent_context/`, and makes the first commit from the current project state.
 7. Startup creates a git worktree for each window under `.worktrees/<worktree>`, unless the worktree field is `none` or `master`.
-8. Startup creates `swarmtools/notify-agent.ps1` for that project.
+8. Startup creates `.worktrees/swarmtools/notify-agent.ps1` for that project.
 9. SwarmForge creates one tmux session, splits one tmux window into one pane per configured role, and launches each configured backend in its assigned worktree.
-10. Roles communicate through helper commands such as `notify-agent.ps1`.
+10. Roles communicate through helper commands such as `.worktrees/swarmtools/notify-agent.ps1`.
 
 ## The `swarmforge.conf` File
 

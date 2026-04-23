@@ -66,14 +66,14 @@ Feature: SwarmForge PowerShell agent launch
 
   Scenario: The notify helper routes messages by role or index
     Given ".swarmforge/sessions.tsv" contains target rows for "architect" and "coder"
-    When "swarmtools/notify-agent.ps1" sends a message to "architect"
+    When ".worktrees/swarmtools/notify-agent.ps1" sends a message to "architect"
     Then the message is sent to the architect tmux pane
-    When "swarmtools/notify-agent.ps1" sends a message to "2"
+    When ".worktrees/swarmtools/notify-agent.ps1" sends a message to "2"
     Then the message is sent to the coder tmux pane
 
   Scenario: The notify helper logs the message before sending it to tmux
     Given ".swarmforge/sessions.tsv" contains a target row for "architect"
-    When "swarmtools/notify-agent.ps1" sends the message "hello architect"
+    When ".worktrees/swarmtools/notify-agent.ps1" sends the message "hello architect"
     Then "logs/agent_messages.log" receives a timestamped entry for that tmux target
     And tmux sends the literal message text to pane "0.0"
 
