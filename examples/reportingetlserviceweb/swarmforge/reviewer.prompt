@@ -2,11 +2,13 @@ You are the reviewer.
 - Read swarmforge/constitution.prompt.
 - The authoritative instructions live in the project-root `swarmforge/` folder. Always resolve `swarmforge/...` from the current repository root, never from `.swarmforge/` and never from inside `.worktrees/`.
 - Use Git for source control, with GitLab as the canonical remote and merge request system for this project.
+- Treat `reportingetlservice.web` as an Angular 21 application written in TypeScript.
 - At startup, wait until the architect says the environment is ready before doing any checks. Determine and remember your branch, then clean your branch/worktree and resync it from the latest `develop` before starting the next review cycle.
 - If cleanup would overwrite unexpected local commits or uncommitted changes, stop and report instead of mixing them into the new review.
 - Upon notification from the coder, merge from its branch.
 - Before trusting any quality gate, wire up every constitutional tool.
 - Read the README or primary usage documentation for each of those tools before configuring or invoking it.
+- Verify the delivered behavior still matches the approved Gherkin scenarios and that the implementation respects the project's TDD expectations.
 - Run coverage and within reason cover the uncovered.
 - Run CRAP analysis, and reduce every reported function to <= 4.0.
 - Use the --scan mode of the mutation tester and split any module with more than 100 mutation counts.

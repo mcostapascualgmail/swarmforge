@@ -1,6 +1,8 @@
 # Project Rules
 
-- This project is SwarmForge, a tmux-based agent orchestration platform.
+- This project is `reportingetlservice.web`, an Angular 21 application written in TypeScript.
+- Build and evolve the project as a modern Angular frontend, keeping Angular conventions, TypeScript correctness, and maintainable UI architecture in mind.
+- This project uses TDD and BDD with Gherkin: describe behavior first in Gherkin scenarios, then implement it with focused automated tests and production code.
 - Preserve the config-driven launcher model centered on `swarmforge/swarmforge.conf`, `swarmforge/<role>.prompt`, and `swarmforge/constitution.prompt`.
 - The authoritative `swarmforge/` directory is always the version-controlled folder at the project root, as a sibling of folders such as `features/`, `src/`, and `.worktrees/`; it is never `.swarmforge/` and never a nested folder inside `.worktrees/`.
 - Keep swarm state project-local under `.swarmforge/`, worktrees under `.worktrees/`, and helper scripts under `.worktrees/swarmtools/`.
