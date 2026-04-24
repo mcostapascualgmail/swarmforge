@@ -19,6 +19,15 @@ Feature: SwarmForge PowerShell workspace setup
     And ".gitignore" contains "logs/"
     And ".gitignore" contains "agent_context/"
 
+  Scenario: Startup adds SwarmForge ignore entries for existing repositories
+    Given a working directory with an existing git repository
+    And the repository already has a commit
+    When "swarmforge.ps1" initializes the repository
+    Then ".gitignore" contains ".swarmforge/"
+    And ".gitignore" contains ".worktrees/"
+    And ".gitignore" contains "logs/"
+    And ".gitignore" contains "agent_context/"
+
   Scenario: Startup prepares the local workspace directories
     Given a valid swarm configuration
     When "swarmforge.ps1" prepares the workspace
@@ -36,26 +45,34 @@ Feature: SwarmForge PowerShell workspace setup
     Then the file ".swarmforge/sessions.tsv" exists
     And the file ".worktrees/swarmtools/notify-agent.ps1" exists
 
-  Scenario: Startup creates one git worktree per non-master role
+  Scenario: Startup creates one git worktree per dedicated role
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       window coder codex coder
       window reviewer codex reviewer
-      window logger none none
+      window logger none root
       """
     And the matching prompt files exist
     When "swarmforge.ps1" prepares worktrees
-    Then the worktree ".worktrees/coder" is created from "HEAD"
+    Then the worktree ".worktrees/architect" is created from "HEAD"
+    And the worktree ".worktrees/coder" is created from "HEAD"
     And the worktree ".worktrees/reviewer" is created from "HEAD"
-    And no worktree is created for "master"
-    And no worktree is created for "none"
+    And no worktree is created for "root"
 
   Scenario: Existing worktrees are reused
     Given a valid swarm configuration with a "coder" worktree
     And ".worktrees/coder/.git" already exists
     When "swarmforge.ps1" prepares worktrees
     Then the existing "coder" worktree is left in place
+
+  Scenario: Existing role branches are reused without resetting them
+    Given a valid swarm configuration with a "coder" worktree
+    And the branch "swarmforge-coder" already exists
+    And ".worktrees/coder/.git" does not exist
+    When "swarmforge.ps1" prepares worktrees
+    Then the worktree ".worktrees/coder" is created from "swarmforge-coder"
+    And the branch "swarmforge-coder" is not reset to "HEAD"
 
   Scenario: Existing swarm sessions are killed before startup continues
     Given a valid swarm configuration
@@ -68,6 +85,7 @@ Feature: SwarmForge PowerShell workspace setup
     When "swarmforge.ps1" launches the swarm
     Then one tmux session named "swarmforge-<working-directory-name>" is created
     And the session has one shared window with panes for "architect", "coder", "reviewer", and "logger"
+    And startup reports the resolved location and current branch for each role
 
   Scenario: Startup attaches the current shell to the shared swarm session
     Given a valid swarm configuration

@@ -18,10 +18,10 @@ Feature: SwarmForge PowerShell configuration
   Scenario: Each config line defines one swarm window
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       window coder codex coder
       window reviewer codex reviewer
-      window logger none none
+      window logger none root
       """
     When "swarmforge.ps1" parses the config
     Then four windows are defined
@@ -31,7 +31,7 @@ Feature: SwarmForge PowerShell configuration
   Scenario: Every agent-backed role requires a matching prompt file
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       window reviewer codex reviewer
       """
     And "swarmforge/architect.prompt" exists
@@ -42,7 +42,7 @@ Feature: SwarmForge PowerShell configuration
   Scenario: Unsupported backends are rejected
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect gpt master
+      window architect gpt architect
       """
     And "swarmforge/architect.prompt" exists
     When "swarmforge.ps1" parses the config
@@ -51,14 +51,14 @@ Feature: SwarmForge PowerShell configuration
   Scenario: Duplicate roles are rejected
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       window architect codex reviewer
       """
     And "swarmforge/architect.prompt" exists
     When "swarmforge.ps1" parses the config
     Then startup fails with an error mentioning "Duplicate role"
 
-  Scenario: Duplicate non-master worktrees are rejected
+  Scenario: Duplicate dedicated worktrees are rejected
     Given "swarmforge/swarmforge.conf" contains:
       """
       window coder codex shared
@@ -68,6 +68,15 @@ Feature: SwarmForge PowerShell configuration
     And "swarmforge/reviewer.prompt" exists
     When "swarmforge.ps1" parses the config
     Then startup fails with an error mentioning "Duplicate worktree"
+
+  Scenario: The deprecated master worktree alias warns and uses the root checkout
+    Given "swarmforge/swarmforge.conf" contains:
+      """
+      window logger none master
+      """
+    When "swarmforge.ps1" parses the config
+    Then startup warns that "master" is deprecated as a root-checkout alias
+    And the "logger" role is assigned to the root checkout
 
   Scenario: Unsafe worktree names are rejected
     Given "swarmforge/swarmforge.conf" contains:

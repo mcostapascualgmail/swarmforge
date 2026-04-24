@@ -17,7 +17,7 @@ SwarmForge is a lightweight, tmux-based orchestration layer that:
 - Reads behavior from project-local `swarmforge/<role>.prompt` files plus a layered `swarmforge/constitution.prompt`
 - Supports per-role backends such as `claude`, `codex`, or `none`
 - Creates a project-local `.worktrees/swarmtools/` directory with notification helpers for the active swarm
-- Creates one git worktree per configured role under `.worktrees/`
+- Creates one git worktree per role with a dedicated worktree name under `.worktrees/`
 - Initializes a git repository in a new working directory and creates a first commit with `logs/` and `agent_context/` ignored
 - Keeps all swarm state local to the working directory in `.swarmforge/`
 
@@ -64,11 +64,12 @@ The default three-agent workflow is:
 3. In `swarmforge/swarmforge.conf`, define each window as `window <role> <agent> <worktree>`.
 4. Add `swarmforge.ps1` to your shell `PATH` before startup.
 5. Run `swarmforge.ps1 <working-directory>` or run it from inside that directory.
-6. If the working directory is not already a git repo, startup runs `git init`, renames the initial branch to `master`, writes `.gitignore` entries for `.swarmforge/`, `.worktrees/`, `logs/`, and `agent_context/`, and makes the first commit from the current project state.
-7. Startup creates a git worktree for each window under `.worktrees/<worktree>`, unless the worktree field is `none` or `master`.
-8. Startup creates `.worktrees/swarmtools/notify-agent.ps1` for that project.
-9. SwarmForge creates one tmux session, splits one tmux window into one pane per configured role, and launches each configured backend in its assigned worktree.
-10. Roles communicate through helper commands such as `.worktrees/swarmtools/notify-agent.ps1`.
+6. Startup always ensures `.gitignore` contains `.swarmforge/`, `.worktrees/`, `logs/`, and `agent_context/`.
+7. If the working directory is not already a git repo, startup runs `git init`, renames the initial branch to `master`, and makes the first commit from the current project state.
+8. Startup creates a git worktree for each window under `.worktrees/<worktree>`, unless the worktree field is `root` or a legacy root alias. Existing `swarmforge-<worktree>` branches are reused instead of reset.
+9. Startup creates `.worktrees/swarmtools/notify-agent.ps1` for that project.
+10. SwarmForge creates one tmux session, splits one tmux window into one pane per configured role, and launches each configured backend in its assigned worktree.
+11. Roles communicate through helper commands such as `.worktrees/swarmtools/notify-agent.ps1`.
 
 ## The `swarmforge.conf` File
 
@@ -91,22 +92,24 @@ This lets each project choose its own swarm shape instead of being locked to a f
 Example config:
 
 ```conf
-window architect claude master
+window architect claude architect
 window coder codex coder
 window reviewer codex reviewer
-window logger none none
+window logger none root
 ```
 
-`logger` is a utility role. When configured with `none`, it tails `logs/agent_messages.log`.
+`logger` is a utility role. When configured with the `none` backend, it tails `logs/agent_messages.log`.
 
 In the example above, the agents run in these worktrees:
 
-- `architect` -> main working directory on `master`
+- `architect` -> `.worktrees/architect`
 - `coder` -> `.worktrees/coder`
 - `reviewer` -> `.worktrees/reviewer`
 - `logger` -> main working directory
 
-If a window uses `master` as its worktree name, SwarmForge does not create `.worktrees/master`; that role runs in the main working directory on the `master` branch.
+Use `root` for roles that should run in the root checkout. Legacy configs may also use `none` or `master` as root-checkout aliases, but `master` is deprecated because it does not guarantee the branch is named `master`.
+
+When tmux is available only through WSL, SwarmForge resolves `pwsh`, agent backends, and launch paths inside WSL so dependency checks and role startup use the same environment.
 
 At runtime, SwarmForge creates one shared tmux session named after the working directory and lays out one visible tmux pane per configured role in a single shared window. Reattach with `tmux attach-session -t <session-name>` or `wsl tmux attach-session -t <session-name>` when tmux is running inside WSL.
 

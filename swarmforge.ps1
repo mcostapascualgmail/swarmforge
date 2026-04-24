@@ -98,8 +98,8 @@ function Check-BackendDependency {
     param([Parameter(Mandatory = $true)][string]$Name)
 
     if ($script:UseWslTmux) {
-        & wsl bash -lc "command -v $Name >/dev/null 2>&1"
-        if ($LASTEXITCODE -ne 0) {
+        $commandPath = Get-WslCommandPath $Name
+        if ([string]::IsNullOrWhiteSpace($commandPath)) {
             throw "'$Name' is required in the tmux environment (WSL) but was not found."
         }
         return
@@ -119,6 +119,62 @@ function Get-PreferredPowerShellExecutable {
     return $null
 }
 
+function Get-WslCommandPath {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    if (-not (Has-Command 'wsl')) {
+        return $null
+    }
+
+    try {
+        $output = & wsl bash -lc "command -v $Name 2>/dev/null"
+        if ($LASTEXITCODE -eq 0) {
+            $path = ($output | Select-Object -First 1)
+            if (-not [string]::IsNullOrWhiteSpace($path)) {
+                return $path.Trim()
+            }
+        }
+    } catch {
+    }
+
+    return $null
+}
+
+function Get-LaunchPowerShellExecutable {
+    if ($script:UseWslTmux) {
+        foreach ($candidate in @('pwsh', 'powershell')) {
+            $commandPath = Get-WslCommandPath $candidate
+            if (-not [string]::IsNullOrWhiteSpace($commandPath)) {
+                return $commandPath
+            }
+        }
+
+        return $null
+    }
+
+    return Get-PreferredPowerShellExecutable
+}
+
+function Get-BackendExecutable {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    if ($script:UseWslTmux) {
+        $commandPath = Get-WslCommandPath $Name
+        if (-not [string]::IsNullOrWhiteSpace($commandPath)) {
+            return $commandPath
+        }
+
+        return $Name
+    }
+
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        return $Name
+    }
+
+    return $command.Source
+}
+
 function Get-ShellPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -133,6 +189,24 @@ function Get-ShellPath {
     }
 
     return ($Path -replace '\\', '/')
+}
+
+function Get-LaunchPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if ($script:UseWslTmux) {
+        return Get-ShellPath $Path
+    }
+
+    return $Path
+}
+
+function Get-LaunchPathSeparator {
+    if ($script:UseWslTmux) {
+        return ':'
+    }
+
+    return ';'
 }
 
 function ConvertTo-PosixSingleQuotedLiteral {
@@ -161,6 +235,10 @@ function Wrap-InLaunchShell {
 
 function Get-CleanupCommand {
     $sessionName = ConvertTo-PowerShellSingleQuotedLiteral $script:SwarmSessionName
+
+    if ($script:UseWslTmux) {
+        return "try { & tmux kill-session -t $sessionName *> `$null } catch { }"
+    }
 
     $cleanupPs1 = Join-Path $ScriptDir 'swarm-cleanup.ps1'
     if (Test-Path -LiteralPath $cleanupPs1) {
@@ -239,8 +317,33 @@ function Test-GitHeadExists {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Test-GitBranchExists {
+    param([Parameter(Mandatory = $true)][string]$Branch)
+
+    & git -C $WorkingDir show-ref --verify --quiet "refs/heads/$Branch"
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Get-GitBranchDisplay {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    try {
+        $branch = (& git -C $Path branch --show-current 2>$null | Select-Object -First 1)
+        if (($LASTEXITCODE -eq 0) -and -not [string]::IsNullOrWhiteSpace($branch)) {
+            return $branch.Trim()
+        }
+
+        $commit = (& git -C $Path rev-parse --short HEAD 2>$null | Select-Object -First 1)
+        if (($LASTEXITCODE -eq 0) -and -not [string]::IsNullOrWhiteSpace($commit)) {
+            return "detached@$($commit.Trim())"
+        }
+    } catch {
+    }
+
+    return 'unknown'
+}
+
 function Ensure-InitialCommit {
-    Ensure-InitialGitignore
     Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'add', '.') -FailureMessage "Failed to stage the initial repository state in $WorkingDir." | Out-Null
     Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'commit', '--allow-empty', '-m', 'Initial swarmforge repository') -FailureMessage "Failed to create the initial commit in $WorkingDir. Configure git user.name and git user.email, then try again." | Out-Null
 }
@@ -251,6 +354,8 @@ function Initialize-GitRepo {
         Invoke-GitChecked -Arguments @('init', $WorkingDir) -FailureMessage "Failed to initialize a git repository in $WorkingDir." | Out-Null
         Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'branch', '-M', 'master') -FailureMessage "Failed to rename the initial branch to 'master' in $WorkingDir." | Out-Null
     }
+
+    Ensure-InitialGitignore
 
     if (-not (Test-GitHeadExists)) {
         Ensure-InitialCommit
@@ -271,6 +376,12 @@ function Display-NameForRole {
 function Worktree-PathForName {
     param([Parameter(Mandatory = $true)][string]$Name)
     return (Join-Path $WorktreesDir $Name)
+}
+
+function Test-IsRootWorktreeName {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    return ($Name.ToLowerInvariant() -in @('root', 'none', 'master'))
 }
 
 function Parse-Config {
@@ -300,6 +411,7 @@ function Parse-Config {
         $role = $fields[1]
         $agent = $fields[2].ToLowerInvariant()
         $worktree = $fields[3]
+        $worktreeKey = $worktree.ToLowerInvariant()
 
         if ($keyword -ne 'window') {
             throw "Unknown config directive on line ${lineNo}: $keyword"
@@ -309,7 +421,11 @@ function Parse-Config {
             throw "Duplicate role '$role' in $ConfigFile"
         }
 
-        if (($worktree -ne 'none') -and ($worktree -ne 'master') -and $script:WorktreeIndex.ContainsKey($worktree)) {
+        if ($worktreeKey -eq 'master') {
+            Write-Warning "Config line ${lineNo}: worktree value 'master' is deprecated as a root-checkout alias. Use 'root' instead."
+        }
+
+        if ((-not (Test-IsRootWorktreeName $worktree)) -and $script:WorktreeIndex.ContainsKey($worktreeKey)) {
             throw "Duplicate worktree '$worktree' in $ConfigFile"
         }
 
@@ -334,11 +450,11 @@ function Parse-Config {
         $session = $script:SwarmSessionName
         $windowName = $SwarmWindowName
         $paneIndex = $index - 1
-        $worktreePath = if ($worktree -in @('none', 'master')) { $WorkingDir } else { Worktree-PathForName $worktree }
+        $worktreePath = if (Test-IsRootWorktreeName $worktree) { $WorkingDir } else { Worktree-PathForName $worktree }
 
         $script:RoleIndex[$role] = $index
-        if ($worktree -notin @('none', 'master')) {
-            $script:WorktreeIndex[$worktree] = $index
+        if (-not (Test-IsRootWorktreeName $worktree)) {
+            $script:WorktreeIndex[$worktreeKey] = $index
         }
 
         $null = $script:Entries.Add([pscustomobject]@{
@@ -582,7 +698,7 @@ function Prepare-Worktrees {
         $worktreePath = $entry.WorktreePath
         $branchName = "swarmforge-$worktreeName"
 
-        if ($worktreeName -in @('none', 'master')) {
+        if (Test-IsRootWorktreeName $worktreeName) {
             continue
         }
 
@@ -595,7 +711,11 @@ function Prepare-Worktrees {
             throw "Cannot create worktree '$worktreeName' because repository HEAD does not exist yet."
         }
 
-        Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'worktree', 'add', '--force', '-B', $branchName, $worktreePath, 'HEAD') -FailureMessage "Failed to create worktree '$worktreeName' at $worktreePath." | Out-Null
+        if (Test-GitBranchExists $branchName) {
+            Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'worktree', 'add', $worktreePath, $branchName) -FailureMessage "Failed to create worktree '$worktreeName' at $worktreePath from existing branch '$branchName'." | Out-Null
+        } else {
+            Invoke-GitChecked -Arguments @('-C', $WorkingDir, 'worktree', 'add', '-b', $branchName, $worktreePath, 'HEAD') -FailureMessage "Failed to create worktree '$worktreeName' at $worktreePath from HEAD." | Out-Null
+        }
 
         if (-not (Test-Path -LiteralPath $worktreeGit)) {
             throw "Worktree '$worktreeName' was not created correctly at $worktreePath."
@@ -608,6 +728,23 @@ function Check-BackendDependencies {
         switch ($entry.Agent) {
             'claude' { Check-BackendDependency 'claude' }
             'codex' { Check-BackendDependency 'codex' }
+        }
+    }
+}
+
+function Check-LaunchPowerShellDependency {
+    foreach ($entry in $script:Entries) {
+        if (($entry.Agent -ne 'none') -or ($entry.Role -eq 'logger')) {
+            $powerShellExe = Get-LaunchPowerShellExecutable
+            if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
+                if ($script:UseWslTmux) {
+                    throw 'pwsh is required in the tmux environment (WSL) to launch role sessions.'
+                }
+
+                throw 'A PowerShell executable is required to launch role sessions.'
+            }
+
+            return
         }
     }
 }
@@ -669,21 +806,23 @@ function Write-RoleLaunchScript {
     )
 
     $launchScriptPath = Join-Path $LaunchScriptsDir "$Role.ps1"
-    $pathPrefix = $SwarmToolsDir + ';' + $ScriptDir + ';'
+    $roleWorktreeForLaunch = Get-LaunchPath $RoleWorktree
+    $promptFileForLaunch = Get-LaunchPath $PromptFile
+    $pathPrefix = (Get-LaunchPath $SwarmToolsDir) + (Get-LaunchPathSeparator) + (Get-LaunchPath $ScriptDir) + (Get-LaunchPathSeparator)
 
     switch ($Agent) {
         'claude' {
-            $agentExecutable = (Get-Command 'claude' -ErrorAction SilentlyContinue).Source
+            $agentExecutable = Get-BackendExecutable 'claude'
             $agentInvocation = "& {0} --model us.anthropic.claude-opus-4-6-v1 --append-system-prompt-file {1} --permission-mode acceptEdits -n {2} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
-                (ConvertTo-PowerShellSingleQuotedLiteral $PromptFile),
+                (ConvertTo-PowerShellSingleQuotedLiteral $promptFileForLaunch),
                 (ConvertTo-PowerShellSingleQuotedLiteral ("SwarmForge $Display"))
         }
         'codex' {
-            $agentExecutable = (Get-Command 'codex' -ErrorAction SilentlyContinue).Source
+            $agentExecutable = Get-BackendExecutable 'codex'
             $agentInvocation = "& {0} -C {1} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
-                (ConvertTo-PowerShellSingleQuotedLiteral $RoleWorktree)
+                (ConvertTo-PowerShellSingleQuotedLiteral $roleWorktreeForLaunch)
         }
         default {
             throw "Unsupported agent '$Agent' for role '$Role'"
@@ -701,8 +840,8 @@ exit `$exitCode
 
     $content = @"
 `$env:PATH = $(ConvertTo-PowerShellSingleQuotedLiteral $pathPrefix) + `$env:PATH
-Set-Location $(ConvertTo-PowerShellSingleQuotedLiteral $RoleWorktree)
-`$promptText = Get-Content -LiteralPath $(ConvertTo-PowerShellSingleQuotedLiteral $PromptFile) -Raw
+Set-Location $(ConvertTo-PowerShellSingleQuotedLiteral $roleWorktreeForLaunch)
+`$promptText = Get-Content -LiteralPath $(ConvertTo-PowerShellSingleQuotedLiteral $promptFileForLaunch) -Raw
 $agentInvocation
 $cleanupBlock
 "@
@@ -727,18 +866,24 @@ function Launch-Role {
     $roleWorktree = $entry.WorktreePath
     $promptFile = Join-Path $PromptsDir "$role.md"
     $initialCommand = @()
-    $powerShellExe = Get-PreferredPowerShellExecutable
+    $powerShellExe = Get-LaunchPowerShellExecutable
 
     if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
+        if ($script:UseWslTmux) {
+            throw 'pwsh is required in the tmux environment (WSL) to launch role sessions.'
+        }
+
         throw 'A PowerShell executable is required to launch role sessions.'
     }
 
     if ($agent -eq 'none') {
         if ($role -eq 'logger') {
             $logFile = Join-Path $WorkingDir 'logs\agent_messages.log'
+            $workingDirForLaunch = Get-LaunchPath $WorkingDir
+            $logFileForLaunch = Get-LaunchPath $logFile
             $sessionCommand = "Set-Location {0}; New-Item -ItemType File -Force -Path {1} | Out-Null; Write-Host 'Logger ready'; Get-Content -LiteralPath {1} -Wait" -f `
-                (ConvertTo-PowerShellSingleQuotedLiteral $WorkingDir),
-                (ConvertTo-PowerShellSingleQuotedLiteral $logFile)
+                (ConvertTo-PowerShellSingleQuotedLiteral $workingDirForLaunch),
+                (ConvertTo-PowerShellSingleQuotedLiteral $logFileForLaunch)
             $initialCommand = @($powerShellExe, '-NoLogo', '-NoProfile', '-Command', $sessionCommand)
         }
 
@@ -750,19 +895,12 @@ function Launch-Role {
     Write-AgentInstructionFile -Role $role -PromptFile $promptFile
 
     $launchScriptPath = Write-RoleLaunchScript -Role $role -RoleWorktree $roleWorktree -PromptFile $promptFile -Agent $agent -Display $display -OwnsCleanup ($Index -eq $script:CleanupOwnerIndex)
-    $initialCommand = @($powerShellExe, '-NoLogo', '-NoProfile', '-File', $launchScriptPath)
+    $initialCommand = @($powerShellExe, '-NoLogo', '-NoProfile', '-File', (Get-LaunchPath $launchScriptPath))
     Create-RolePane -Session $session -Window $windowName -IsFirstWindow $IsFirstWindow -InitialCommand $initialCommand
     Write-Host "  ${Cyan}[$display]${Reset} started in $session`:$windowName.$paneIndex"
 }
 
 function Choose-CleanupOwner {
-    foreach ($entry in $script:Entries) {
-        if ($entry.Agent -eq 'codex') {
-            $script:CleanupOwnerIndex = $entry.Index
-            return
-        }
-    }
-
     if ($script:RoleIndex.ContainsKey('architect')) {
         $architectIndex = [int]$script:RoleIndex['architect']
         if ($script:Entries[$architectIndex - 1].Agent -ne 'none') {
@@ -784,6 +922,7 @@ Check-Dependency 'git'
 Initialize-GitRepo
 Parse-Config
 Check-BackendDependencies
+Check-LaunchPowerShellDependency
 Prepare-Workspace
 Prepare-Worktrees
 Choose-CleanupOwner
@@ -830,6 +969,11 @@ Write-Host ('Window: ' + $SwarmWindowName)
 Write-Host 'Panes:'
 foreach ($entry in $script:Entries) {
     Write-Host ('  ' + $entry.DisplayName + ': ' + $entry.Session + ':' + $entry.Window + '.' + $entry.Pane)
+}
+Write-Host 'Role locations:'
+foreach ($entry in $script:Entries) {
+    $branch = Get-GitBranchDisplay -Path $entry.WorktreePath
+    Write-Host ('  ' + $entry.DisplayName + ': ' + $entry.WorktreePath + ' [' + $branch + ']')
 }
 Write-Host ''
 

@@ -1,0 +1,4 @@
+.swarmforge/
+.worktrees/
+logs/
+agent_context/

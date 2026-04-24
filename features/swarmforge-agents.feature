@@ -7,10 +7,10 @@ Feature: SwarmForge PowerShell agent launch
   Scenario: Startup writes one generated instruction file per agent-backed role
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       window coder codex coder
       window reviewer codex reviewer
-      window logger none none
+      window logger none root
       """
     And the matching prompt files exist
     When "swarmforge.ps1" launches the roles
@@ -22,7 +22,7 @@ Feature: SwarmForge PowerShell agent launch
   Scenario: Generated instructions tell agents to read constitution and role prompts recursively
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       """
     And "swarmforge/architect.prompt" exists
     When "swarmforge.ps1" writes the generated instruction file for "architect"
@@ -34,7 +34,7 @@ Feature: SwarmForge PowerShell agent launch
   Scenario: Claude roles launch in their assigned worktrees with the generated prompt
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window architect claude master
+      window architect claude architect
       """
     And "swarmforge/architect.prompt" exists
     When "swarmforge.ps1" launches the "architect" role
@@ -55,10 +55,22 @@ Feature: SwarmForge PowerShell agent launch
     Then tmux sends a command containing "codex -C" to the coder pane
     And the command contains "$promptText"
 
+  Scenario: WSL tmux launches roles with WSL executables and paths
+    Given tmux is available through WSL
+    And "swarmforge/swarmforge.conf" contains:
+      """
+      window coder codex coder
+      """
+    And "swarmforge/coder.prompt" exists
+    When "swarmforge.ps1" launches the "coder" role
+    Then tmux sends a command containing "pwsh" to the coder pane
+    And the generated launcher uses a WSL path for ".worktrees/coder"
+    And the generated launcher uses the WSL "codex" executable
+
   Scenario: The logger role tails the shared agent log without an agent backend
     Given "swarmforge/swarmforge.conf" contains:
       """
-      window logger none none
+      window logger none root
       """
     When "swarmforge.ps1" launches the "logger" role
     Then tmux sends a command containing "New-Item -ItemType File -Force" to the logger pane
