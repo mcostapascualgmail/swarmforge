@@ -52,7 +52,10 @@ Feature: SwarmForge PowerShell agent launch
       """
     And "swarmforge/coder.prompt" exists
     When "swarmforge.ps1" launches the "coder" role
-    Then tmux sends a command containing "codex -C" to the coder pane
+    Then tmux sends a command containing "codex" to the coder pane
+    And the command contains "-m"
+    And the command contains "gpt-5.4"
+    And the command contains "-C"
     And the command contains "$promptText"
 
   Scenario: WSL tmux launches roles with WSL executables and paths
@@ -95,3 +98,4 @@ Feature: SwarmForge PowerShell agent launch
     When "swarmforge.ps1" chooses the cleanup owner
     Then the "architect" role becomes the cleanup owner when it has an agent backend
     And its launch command includes "swarm-cleanup.ps1"
+    And its launch command passes the launchers directory to cleanup

@@ -91,3 +91,15 @@ Feature: SwarmForge PowerShell workspace setup
     Given a valid swarm configuration
     When "swarmforge.ps1" finishes launching the swarm
     Then the current shell attaches to one running tmux session
+
+  Scenario: Closing the attached client cleans up the swarm by default
+    Given a valid swarm configuration
+    When the attached tmux client exits
+    Then the swarm tmux session is killed
+    And launcher PowerShell process trees for the swarm are stopped
+
+  Scenario: Startup can preserve the swarm for manual reattach
+    Given a valid swarm configuration
+    When "swarmforge.ps1" starts with "-KeepSessionOnDetach"
+    And the attached tmux client exits
+    Then the swarm tmux session is left running for reattach

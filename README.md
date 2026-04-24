@@ -71,6 +71,8 @@ The default three-agent workflow is:
 10. SwarmForge creates one tmux session, splits one tmux window into one pane per configured role, and launches each configured backend in its assigned worktree.
 11. Roles communicate through helper commands such as `.worktrees/swarmtools/notify-agent.ps1`.
 
+By default, closing or detaching the attached tmux client tears down the swarm and stops launcher PowerShell process trees for that project. Start with `-KeepSessionOnDetach` when you intentionally want the tmux session to keep running for manual reattach.
+
 ## The `swarmforge.conf` File
 
 `swarmforge/swarmforge.conf` defines the swarm window-by-window. Each line has this form:
@@ -111,7 +113,9 @@ Use `root` for roles that should run in the root checkout. Legacy configs may al
 
 When tmux is available only through WSL, SwarmForge resolves `pwsh`, agent backends, and launch paths inside WSL so dependency checks and role startup use the same environment.
 
-At runtime, SwarmForge creates one shared tmux session named after the working directory and lays out one visible tmux pane per configured role in a single shared window. Reattach with `tmux attach-session -t <session-name>` or `wsl tmux attach-session -t <session-name>` when tmux is running inside WSL.
+Codex roles are launched with `-m gpt-5.4`.
+
+At runtime, SwarmForge creates one shared tmux session named after the working directory and lays out one visible tmux pane per configured role in a single shared window. If started with `-KeepSessionOnDetach`, reattach with `tmux attach-session -t <session-name>` or `wsl tmux attach-session -t <session-name>` when tmux is running inside WSL.
 
 ## Examples
 

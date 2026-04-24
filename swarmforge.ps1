@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$WorkingDir = (Get-Location).Path
+    [string]$WorkingDir = (Get-Location).Path,
+    [switch]$KeepSessionOnDetach
 )
 
 Set-StrictMode -Version Latest
@@ -247,10 +248,11 @@ function Get-CleanupCommand {
             throw 'A PowerShell executable is required to launch swarm-cleanup.ps1.'
         }
 
-        return "Start-Process -WindowStyle Hidden -FilePath {0} -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', {1}, {2}) | Out-Null" -f `
+        return "Start-Process -WindowStyle Hidden -FilePath {0} -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', {1}, {2}, {3}) | Out-Null" -f `
             (ConvertTo-PowerShellSingleQuotedLiteral $powerShellExe),
             (ConvertTo-PowerShellSingleQuotedLiteral $cleanupPs1),
-            $sessionName
+            $sessionName,
+            (ConvertTo-PowerShellSingleQuotedLiteral $LaunchScriptsDir)
     }
 
     $cleanupSh = Join-Path $ScriptDir 'swarm-cleanup.sh'
@@ -310,6 +312,55 @@ function Invoke-GitChecked {
     }
 
     return @($output)
+}
+
+function Stop-ProcessTree {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    if ($ProcessId -eq $PID) {
+        return
+    }
+
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Stop-ProcessTree -ProcessId ([int]$child.ProcessId)
+    }
+
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Stop-LaunchProcesses {
+    param([Parameter(Mandatory = $true)][string]$LaunchersPath)
+
+    if ($script:UseWslTmux -or -not (Test-Path -LiteralPath $LaunchersPath)) {
+        return
+    }
+
+    $resolvedLaunchersPath = (Resolve-Path -LiteralPath $LaunchersPath).Path
+    $launcherProcesses = @(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
+                $_.CommandLine.IndexOf($resolvedLaunchersPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+            }
+    )
+
+    foreach ($process in $launcherProcesses) {
+        Stop-ProcessTree -ProcessId ([int]$process.ProcessId)
+    }
+}
+
+function Stop-SwarmSession {
+    param([Parameter(Mandatory = $true)][string]$Session)
+
+    if (-not [string]::IsNullOrWhiteSpace($Session)) {
+        try {
+            Invoke-Tmux kill-session -t $Session *> $null
+        } catch {
+        }
+    }
+
+    Stop-LaunchProcesses -LaunchersPath $LaunchScriptsDir
 }
 
 function Test-GitHeadExists {
@@ -820,8 +871,9 @@ function Write-RoleLaunchScript {
         }
         'codex' {
             $agentExecutable = Get-BackendExecutable 'codex'
-            $agentInvocation = "& {0} -C {1} `$promptText" -f `
+            $agentInvocation = "& {0} -m {1} -C {2} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
+                (ConvertTo-PowerShellSingleQuotedLiteral 'gpt-5.4'),
                 (ConvertTo-PowerShellSingleQuotedLiteral $roleWorktreeForLaunch)
         }
         default {
@@ -938,7 +990,7 @@ try {
 
 if ($hasSession) {
     Write-Host "${Yellow}Existing SwarmForge session found: $($script:SwarmSessionName). Killing it...${Reset}"
-    Invoke-Tmux kill-session -t $script:SwarmSessionName *> $null
+    Stop-SwarmSession -Session $script:SwarmSessionName
 }
 
 Write-Host ($Cyan + $Bold)
@@ -981,7 +1033,17 @@ $attachHint = if ($script:UseWslTmux) { 'wsl tmux attach-session -t <session-nam
 
 Write-Host ($Green + 'Tip: Use ' + $WorkingDir + '\.worktrees\swarmtools\notify-agent.ps1 role-or-index message while the swarm is running.' + $Reset)
 Write-Host ($Green + 'Tip: Navigate tmux panes with Ctrl-b then an arrow key.' + $Reset)
-Write-Host ($Green + 'Tip: Reattach manually with ' + ($attachHint -replace '<session-name>', $script:SwarmSessionName) + ' if needed.' + $Reset)
+if ($KeepSessionOnDetach) {
+    Write-Host ($Green + 'Tip: Reattach manually with ' + ($attachHint -replace '<session-name>', $script:SwarmSessionName) + ' if needed.' + $Reset)
+} else {
+    Write-Host ($Green + 'Tip: Closing or detaching this client stops the swarm. Start with -KeepSessionOnDetach to preserve it for reattach.' + $Reset)
+}
 Write-Host ''
 
-Invoke-Tmux attach-session -t $script:SwarmSessionName
+try {
+    Invoke-Tmux attach-session -t $script:SwarmSessionName
+} finally {
+    if (-not $KeepSessionOnDetach) {
+        Stop-SwarmSession -Session $script:SwarmSessionName
+    }
+}

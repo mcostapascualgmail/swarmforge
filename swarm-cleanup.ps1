@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [string]$Session
+    [string]$Session,
+
+    [Parameter(Position = 1)]
+    [string]$LaunchersDir
 )
 
 Set-StrictMode -Version Latest
@@ -43,6 +46,42 @@ function Invoke-Tmux {
     }
 }
 
+function Stop-ProcessTree {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    if ($ProcessId -eq $PID) {
+        return
+    }
+
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Stop-ProcessTree -ProcessId ([int]$child.ProcessId)
+    }
+
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Stop-LaunchProcesses {
+    param([string]$LaunchersPath)
+
+    if ($script:UseWslTmux -or [string]::IsNullOrWhiteSpace($LaunchersPath) -or -not (Test-Path -LiteralPath $LaunchersPath)) {
+        return
+    }
+
+    $resolvedLaunchersPath = (Resolve-Path -LiteralPath $LaunchersPath).Path
+    $launcherProcesses = @(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
+                $_.CommandLine.IndexOf($resolvedLaunchersPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+            }
+    )
+
+    foreach ($process in $launcherProcesses) {
+        Stop-ProcessTree -ProcessId ([int]$process.ProcessId)
+    }
+}
+
 Initialize-TmuxCommand
 
 if (-not [string]::IsNullOrWhiteSpace($Session)) {
@@ -51,3 +90,5 @@ if (-not [string]::IsNullOrWhiteSpace($Session)) {
     } catch {
     }
 }
+
+Stop-LaunchProcesses -LaunchersPath $LaunchersDir
