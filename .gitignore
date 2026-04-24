@@ -1,4 +1,6 @@
 .swarmforge/
 .worktrees/
+.stryker/
+.stryker-tmp/
 logs/
 agent_context/
