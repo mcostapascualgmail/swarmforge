@@ -45,6 +45,17 @@ Feature: SwarmForge PowerShell agent launch
     And the command contains "--permission-mode acceptEdits"
     And the command contains "$promptText"
 
+  Scenario: Claude reviewer launches with bypass permissions
+    Given "swarmforge/swarmforge.conf" contains:
+      """
+      window reviewer claude reviewer
+      """
+    And "swarmforge/reviewer.prompt" exists
+    When "swarmforge.ps1" launches the "reviewer" role
+    Then tmux sends a command containing "claude" to the reviewer pane
+    And the command contains "--permission-mode bypassPermissions"
+    And the command does not contain "--permission-mode acceptEdits"
+
   Scenario: Codex roles launch in their assigned worktrees with the generated prompt
     Given "swarmforge/swarmforge.conf" contains:
       """

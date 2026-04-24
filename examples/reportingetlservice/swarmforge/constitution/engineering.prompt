@@ -1,9 +1,8 @@
 # Engineering Rules
 
-- Prefer simple shell-based orchestration in `swarmforge.ps1` unless a compiled CLI replacement is explicitly part of the work.
-- Keep psmux/tmux session management, Terminal integration, git worktree setup, and helper-script generation reliable and observable.
-- Preserve config-driven behavior: role topology, backend choice, and worktree assignment must come from `swarmforge/swarmforge.conf`.
-- Keep prompt generation explicit and deterministic so each role receives the correct startup instructions.
-- Verify behavior with executable tests around startup flow, prompt generation, backend launch commands, and psmux/tmux orchestration.
-- When changing startup or orchestration behavior, update the corresponding feature files and CLI/integration coverage together.
-- Before relying on external tools or backends such as `psmux`, `claude`, `codex`, `git`, or `watch`, verify their invocation contract from primary documentation or local help output.
+- Prefer standard .NET and ASP.NET Core tooling, project structure, and build/test conventions over custom infrastructure.
+- Keep API behavior covered by focused xUnit tests and supporting specs under `features/`.
+- Preserve clear boundaries between domain logic, persistence, HTTP endpoints, background processing, and external integrations.
+- Keep import behavior deterministic, observable, and safe to retry when possible.
+- Verify changes with focused `dotnet test`, build, or integration checks appropriate to the change.
+- Before relying on external tools or libraries such as `dotnet`, EF Core, database services, or mocking libraries, verify their invocation contract from primary documentation or local help output.

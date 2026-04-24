@@ -1,11 +1,8 @@
 # Engineering Rules
 
-- Prefer simple PowerShell-based orchestration in `swarmforge.ps1` unless a compiled CLI replacement is explicitly part of the work.
-- Keep tmux session management, Terminal integration, git worktree setup, and helper-script generation reliable and observable.
-- Preserve config-driven behavior: role topology, backend choice, and worktree assignment must come from `swarmforge/swarmforge.conf`.
-- Keep prompt generation explicit and deterministic so each role receives the correct startup instructions.
 - Prefer standard Angular and TypeScript tooling, project structure, and build/test conventions over custom infrastructure.
 - Keep Gherkin specifications, automated tests, and Angular implementation aligned so behavior remains traceable from feature text to working code.
-- Verify behavior with executable tests around startup flow, prompt generation, backend launch commands, and tmux orchestration.
-- When changing startup or orchestration behavior, update the corresponding feature files and CLI/integration coverage together.
-- Before relying on external tools or backends such as `tmux`, `claude`, `codex`, `git`, or `watch`, verify their invocation contract from primary documentation or local help output.
+- Preserve clear boundaries between UI components, services, routing, state, and API integration.
+- Keep user-facing behavior accessible, responsive, and consistent with the approved Gherkin scenarios.
+- Verify changes with focused Angular and TypeScript tests, linting, or builds appropriate to the change.
+- Before relying on external tools or libraries such as `ng`, `npm`, testing frameworks, or browser APIs, verify their invocation contract from primary documentation or local help output.

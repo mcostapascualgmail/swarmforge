@@ -248,11 +248,15 @@ function Get-CleanupCommand {
             throw 'A PowerShell executable is required to launch swarm-cleanup.ps1.'
         }
 
-        return "Start-Process -WindowStyle Hidden -FilePath {0} -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', {1}, {2}, {3}) | Out-Null" -f `
-            (ConvertTo-PowerShellSingleQuotedLiteral $powerShellExe),
+        $cleanupCommand = "& {0} {1} {2}" -f `
             (ConvertTo-PowerShellSingleQuotedLiteral $cleanupPs1),
             $sessionName,
             (ConvertTo-PowerShellSingleQuotedLiteral $LaunchScriptsDir)
+        $encodedCleanupCommand = ConvertTo-EncodedPowerShellCommand $cleanupCommand
+
+        return "# swarm-cleanup.ps1`nStart-Process -WindowStyle Hidden -FilePath {0} -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', {1}) | Out-Null" -f `
+            (ConvertTo-PowerShellSingleQuotedLiteral $powerShellExe),
+            (ConvertTo-PowerShellSingleQuotedLiteral $encodedCleanupCommand)
     }
 
     $cleanupSh = Join-Path $ScriptDir 'swarm-cleanup.sh'
@@ -361,6 +365,39 @@ function Stop-SwarmSession {
     }
 
     Stop-LaunchProcesses -LaunchersPath $LaunchScriptsDir
+}
+
+function Start-DetachCleanupWatcher {
+    param([Parameter(Mandatory = $true)][string]$Session)
+
+    if ($KeepSessionOnDetach) {
+        return
+    }
+
+    $cleanupPs1 = Join-Path $ScriptDir 'swarm-cleanup.ps1'
+    if (-not (Test-Path -LiteralPath $cleanupPs1)) {
+        return
+    }
+
+    $powerShellExe = Get-PreferredPowerShellExecutable
+    if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
+        return
+    }
+
+    $watchCommand = "& {0} {1} {2} -WaitForDetach -SupervisorProcessId {3}" -f `
+        (ConvertTo-PowerShellSingleQuotedLiteral $cleanupPs1),
+        (ConvertTo-PowerShellSingleQuotedLiteral $Session),
+        (ConvertTo-PowerShellSingleQuotedLiteral $LaunchScriptsDir),
+        $PID
+    $encodedWatchCommand = ConvertTo-EncodedPowerShellCommand $watchCommand
+
+    Start-Process -WindowStyle Hidden -FilePath $powerShellExe -ArgumentList @(
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-EncodedCommand',
+        $encodedWatchCommand
+    ) | Out-Null
 }
 
 function Test-GitHeadExists {
@@ -864,9 +901,11 @@ function Write-RoleLaunchScript {
     switch ($Agent) {
         'claude' {
             $agentExecutable = Get-BackendExecutable 'claude'
-            $agentInvocation = "& {0} --model us.anthropic.claude-opus-4-6-v1 --append-system-prompt-file {1} --permission-mode acceptEdits -n {2} `$promptText" -f `
+            $claudePermissionMode = if ($Role -eq 'reviewer') { 'bypassPermissions' } else { 'acceptEdits' }
+            $agentInvocation = "& {0} --model us.anthropic.claude-opus-4-6-v1 --append-system-prompt-file {1} --permission-mode {2} -n {3} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
                 (ConvertTo-PowerShellSingleQuotedLiteral $promptFileForLaunch),
+                (ConvertTo-PowerShellSingleQuotedLiteral $claudePermissionMode),
                 (ConvertTo-PowerShellSingleQuotedLiteral ("SwarmForge $Display"))
         }
         'codex' {
@@ -1039,6 +1078,8 @@ if ($KeepSessionOnDetach) {
     Write-Host ($Green + 'Tip: Closing or detaching this client stops the swarm. Start with -KeepSessionOnDetach to preserve it for reattach.' + $Reset)
 }
 Write-Host ''
+
+Start-DetachCleanupWatcher -Session $script:SwarmSessionName
 
 try {
     Invoke-Tmux attach-session -t $script:SwarmSessionName

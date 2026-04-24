@@ -1,8 +1,8 @@
 # Project Rules
 
-- This project is ReportingETLService is a .NET 10.0 ASP.NET Core Web API for importing and mantaining Sales and invetory data for LiveNation.
-- Preserve the config-driven launcher model centered on `swarmforge/swarmforge.conf`, `swarmforge/<role>.prompt`, and `swarmforge/constitution.prompt`.
+- This project is `ReportingETLService`, a .NET 10.0 ASP.NET Core Web API for importing and maintaining sales and inventory data for LiveNation.
+- Build and evolve the API around clear domain boundaries, reliable imports, and maintainable persistence and integration code.
 - The authoritative `swarmforge/` directory is always the version-controlled folder at the project root, as a sibling of folders such as `features/`, `src/`, and `.worktrees/`; it is never `.swarmforge/` and never a nested folder inside `.worktrees/`.
 - Keep swarm state project-local under `.swarmforge/`, worktrees under `.worktrees/`, and helper scripts under `.worktrees/swarmtools/`.
-- Prefer simple shell-based orchestration over adding heavier runtime infrastructure.
+- Prefer straightforward .NET project structure over custom runtime infrastructure unless the feature clearly requires it.
 - Maintain clear role boundaries, reliable startup behavior, and explicit agent handoff mechanisms.

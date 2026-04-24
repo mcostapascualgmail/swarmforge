@@ -4,7 +4,16 @@ param(
     [string]$Session,
 
     [Parameter(Position = 1)]
-    [string]$LaunchersDir
+    [string]$LaunchersDir,
+
+    [Parameter(Position = 2)]
+    [switch]$WaitForDetach,
+
+    [Parameter(Position = 3)]
+    [int]$InitialAttachTimeoutSeconds = 120,
+
+    [Parameter(Position = 4)]
+    [int]$SupervisorProcessId = 0
 )
 
 Set-StrictMode -Version Latest
@@ -82,7 +91,68 @@ function Stop-LaunchProcesses {
     }
 }
 
+function Get-TmuxClientCount {
+    param([Parameter(Mandatory = $true)][string]$SessionName)
+
+    try {
+        $clients = @(Invoke-Tmux list-clients -t $SessionName 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            return -1
+        }
+
+        return $clients.Count
+    } catch {
+        return -1
+    }
+}
+
+function Test-ProcessIsRunning {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    if ($ProcessId -le 0) {
+        return $true
+    }
+
+    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+}
+
+function Wait-ForDetach {
+    param(
+        [Parameter(Mandatory = $true)][string]$SessionName,
+        [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+        [Parameter(Mandatory = $true)][int]$ParentProcessId
+    )
+
+    $sawClient = $false
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ($true) {
+        if (-not (Test-ProcessIsRunning -ProcessId $ParentProcessId)) {
+            return
+        }
+
+        $clientCount = Get-TmuxClientCount -SessionName $SessionName
+        if ($clientCount -lt 0) {
+            return
+        }
+
+        if ($clientCount -gt 0) {
+            $sawClient = $true
+        } elseif ($sawClient) {
+            return
+        } elseif ((Get-Date) -ge $deadline) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 Initialize-TmuxCommand
+
+if ($WaitForDetach) {
+    Wait-ForDetach -SessionName $Session -TimeoutSeconds $InitialAttachTimeoutSeconds -ParentProcessId $SupervisorProcessId
+}
 
 if (-not [string]::IsNullOrWhiteSpace($Session)) {
     try {

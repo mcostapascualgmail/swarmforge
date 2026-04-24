@@ -71,7 +71,7 @@ The default three-agent workflow is:
 10. SwarmForge creates one tmux session, splits one tmux window into one pane per configured role, and launches each configured backend in its assigned worktree.
 11. Roles communicate through helper commands such as `.worktrees/swarmtools/notify-agent.ps1`.
 
-By default, closing or detaching the attached tmux client tears down the swarm and stops launcher PowerShell process trees for that project. Start with `-KeepSessionOnDetach` when you intentionally want the tmux session to keep running for manual reattach.
+By default, closing or detaching the attached tmux client tears down the swarm and stops launcher PowerShell process trees for that project. SwarmForge also starts a small hidden watcher so an abrupt terminal close still cleans up the tmux session instead of leaving PowerShell pane processes behind. Start with `-KeepSessionOnDetach` when you intentionally want the tmux session to keep running for manual reattach.
 
 ## The `swarmforge.conf` File
 

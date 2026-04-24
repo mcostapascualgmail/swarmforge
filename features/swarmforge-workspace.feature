@@ -94,7 +94,7 @@ Feature: SwarmForge PowerShell workspace setup
 
   Scenario: Closing the attached client cleans up the swarm by default
     Given a valid swarm configuration
-    When the attached tmux client exits
+    When the attached tmux client exits or its terminal is closed
     Then the swarm tmux session is killed
     And launcher PowerShell process trees for the swarm are stopped
 
@@ -103,3 +103,4 @@ Feature: SwarmForge PowerShell workspace setup
     When "swarmforge.ps1" starts with "-KeepSessionOnDetach"
     And the attached tmux client exits
     Then the swarm tmux session is left running for reattach
+    And no detach cleanup watcher is started
