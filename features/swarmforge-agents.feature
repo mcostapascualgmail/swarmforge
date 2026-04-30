@@ -64,10 +64,22 @@ Feature: SwarmForge PowerShell agent launch
     And "swarmforge/coder.prompt" exists
     When "swarmforge.ps1" launches the "coder" role
     Then tmux sends a command containing "codex" to the coder pane
+    And the command contains "--full-auto"
     And the command contains "-m"
     And the command contains "gpt-5.4"
     And the command contains "-C"
     And the command contains "$promptText"
+
+  Scenario: Codex reviewer launches with bypassed approvals and sandbox
+    Given "swarmforge/swarmforge.conf" contains:
+      """
+      window reviewer codex reviewer
+      """
+    And "swarmforge/reviewer.prompt" exists
+    When "swarmforge.ps1" launches the "reviewer" role
+    Then tmux sends a command containing "codex" to the reviewer pane
+    And the command contains "--dangerously-bypass-approvals-and-sandbox"
+    And the command does not contain "--full-auto"
 
   Scenario: WSL tmux launches roles with WSL executables and paths
     Given tmux is available through WSL

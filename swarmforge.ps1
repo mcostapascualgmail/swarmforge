@@ -902,7 +902,7 @@ function Write-RoleLaunchScript {
         'claude' {
             $agentExecutable = Get-BackendExecutable 'claude'
             $claudePermissionMode = if ($Role -eq 'reviewer') { 'bypassPermissions' } else { 'acceptEdits' }
-            $agentInvocation = "& {0} --model us.anthropic.claude-opus-4-6-v1 --append-system-prompt-file {1} --permission-mode {2} -n {3} `$promptText" -f `
+            $agentInvocation = "& {0} --model arn:aws:bedrock:us-east-1:856708425739:inference-profile/global.anthropic.claude-opus-4-7 --append-system-prompt-file {1} --permission-mode {2} -n {3} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
                 (ConvertTo-PowerShellSingleQuotedLiteral $promptFileForLaunch),
                 (ConvertTo-PowerShellSingleQuotedLiteral $claudePermissionMode),
@@ -910,8 +910,10 @@ function Write-RoleLaunchScript {
         }
         'codex' {
             $agentExecutable = Get-BackendExecutable 'codex'
-            $agentInvocation = "& {0} -m {1} -C {2} `$promptText" -f `
+            $codexPermissionFlag = if ($Role -eq 'reviewer') { '--dangerously-bypass-approvals-and-sandbox' } else { '--full-auto' }
+            $agentInvocation = "& {0} {1} -m {2} -C {3} `$promptText" -f `
                 (ConvertTo-PowerShellSingleQuotedLiteral $agentExecutable),
+                (ConvertTo-PowerShellSingleQuotedLiteral $codexPermissionFlag),
                 (ConvertTo-PowerShellSingleQuotedLiteral 'gpt-5.4'),
                 (ConvertTo-PowerShellSingleQuotedLiteral $roleWorktreeForLaunch)
         }
